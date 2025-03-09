@@ -1,0 +1,23 @@
+# Edgetainer Server Configuration
+
+server:
+  host: "0.0.0.0"  # Listen on all interfaces
+  port: 8080
+
+database:
+  host: "postgres"  # Use the Docker Compose service name
+  port: 5432
+  user: "postgres"
+  password: "postgres"
+  dbname: "edgetainer"
+
+ssh:
+  port: 2222
+  host_key_path: "/app/ssh/ssh_host_key"  # Updated to match our volume mount
+  authorized_keys_path: "/app/ssh/authorized_keys"  # Path to the authorized keys file
+  start_port: 10000
+  end_port: 20000
+
+logging:
+  level: "info"
+  log_file: "/app/logs/edgetainer-server.log"

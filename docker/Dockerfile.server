@@ -1,0 +1,90 @@
+ARG ALPINE_VERSION=3.21
+ARG GO_VERSION=1.24
+ARG NODE_VERSION=20
+
+# Stage 1: Build the web UI
+FROM node:${NODE_VERSION}-alpine AS web-builder
+
+WORKDIR /app
+
+# Copy web package.json and package-lock.json
+COPY web/package*.json ./
+RUN npm ci
+
+# Copy the rest of the web application
+COPY web/ ./
+
+# Build the web application
+RUN npm run build
+
+# Stage 2: Build the Go server
+FROM golang:${GO_VERSION}-alpine${ALPINE_VERSION} AS server-builder
+
+WORKDIR /app
+
+# Copy go.mod and go.sum files
+COPY go.mod go.sum ./
+RUN go mod download
+
+# Copy the source code
+COPY . .
+
+# Build the application
+RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /app/bin/edgetainer-server ./cmd/server
+
+# Use a minimal alpine image for the final container
+FROM alpine:${ALPINE_VERSION}
+
+# Install required system dependencies
+RUN apk --no-cache add ca-certificates tzdata openssh-client curl
+
+# Install Butane for Ignition config generation
+RUN wget -O /usr/local/bin/butane \
+    "https://github.com/coreos/butane/releases/download/v0.23.0/butane-x86_64-unknown-linux-gnu" && \
+    chmod +x /usr/local/bin/butane
+
+WORKDIR /app
+
+# Copy the binary from the server-builder stage
+COPY --from=server-builder /app/bin/edgetainer-server /app/edgetainer-server
+
+# Copy the web UI from the web-builder stage
+COPY --from=web-builder /app/dist /app/web
+
+# Create directories
+RUN mkdir -p /app/ssh /app/logs /app/ssh/authorized_keys.d
+
+# Create entrypoint script
+RUN echo '#!/bin/sh' > /app/entrypoint.sh && \
+    echo 'if [ ! -f /app/ssh/ssh_host_key ]; then' >> /app/entrypoint.sh && \
+    echo '  echo "Generating SSH host key..."' >> /app/entrypoint.sh && \
+    echo '  ssh-keygen -t rsa -b 4096 -f /app/ssh/ssh_host_key -N ""' >> /app/entrypoint.sh && \
+    echo '  echo "SSH host key generated"' >> /app/entrypoint.sh && \
+    echo 'fi' >> /app/entrypoint.sh && \
+    echo '' >> /app/entrypoint.sh && \
+    echo '# Initialize empty authorized_keys file if it does not exist' >> /app/entrypoint.sh && \
+    echo 'if [ ! -f /app/ssh/authorized_keys ]; then' >> /app/entrypoint.sh && \
+    echo '  echo "Creating empty authorized_keys file"' >> /app/entrypoint.sh && \
+    echo '  touch /app/ssh/authorized_keys' >> /app/entrypoint.sh && \
+    echo 'fi' >> /app/entrypoint.sh && \
+    echo '' >> /app/entrypoint.sh && \
+    echo 'exec "$@"' >> /app/entrypoint.sh && \
+    chmod +x /app/entrypoint.sh
+
+# Copy default config
+COPY ./config/server-config.yaml /app/config.yaml
+
+# Copy templates for ignition config generation
+COPY ./config/templates /app/templates
+
+# Create a non-root user
+RUN adduser -D -H -h /app appuser && \
+    chown -R appuser:appuser /app
+USER appuser
+
+# Expose API and SSH ports
+EXPOSE 8080 2222
+
+# Set entrypoint and command
+ENTRYPOINT ["/app/entrypoint.sh"]
+CMD ["/app/edgetainer-server", "--config", "/app/config.yaml"]

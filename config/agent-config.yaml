@@ -1,0 +1,21 @@
+# Edgetainer Agent Configuration
+
+device:
+  id: ""  # Will be auto-generated on first run if empty
+  name: "edgetainer-device"
+
+server:
+  host: "edgetainer-server"  # Use the server's hostname or IP
+  port: 8080
+
+ssh:
+  port: 2222
+  key: "/app/ssh/id_rsa"  # Updated to match the key generated in the Docker entrypoint
+
+docker:
+  compose_dir: "/app/compose"
+  network_name: "edgetainer"
+
+logging:
+  level: "info"
+  log_file: "/app/logs/edgetainer-agent.log"

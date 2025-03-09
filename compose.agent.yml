@@ -1,0 +1,27 @@
+services:
+  edgetainer-agent:
+    image: ghcr.io/edgetainer/edgetainer/agent:latest
+    container_name: edgetainer-agent
+    privileged: true # Needed to access Docker socket and system info
+    volumes:
+      - ./config/agent-config.yaml:/app/config.yaml
+      - edgetainer-agent-ssh:/app/ssh
+      - edgetainer-agent-compose:/app/compose
+      - edgetainer-agent-logs:/app/logs
+      - /var/run/docker.sock:/var/run/docker.sock # Mount Docker socket to manage containers
+    restart: unless-stopped
+    environment:
+      - TZ=UTC
+      # Optional: Uncomment and set if you want to override config file values
+      # - EDGETAINER_SERVER_HOST=server.example.com
+      # - EDGETAINER_SERVER_PORT=8080
+      # - EDGETAINER_SSH_PORT=2222
+      # - EDGETAINER_DEVICE_ID=my-device-id
+
+volumes:
+  edgetainer-agent-ssh:
+    driver: local
+  edgetainer-agent-compose:
+    driver: local
+  edgetainer-agent-logs:
+    driver: local

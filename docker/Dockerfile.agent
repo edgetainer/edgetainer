@@ -1,0 +1,61 @@
+ARG ALPINE_VERSION=3.21
+ARG GO_VERSION=1.24
+ARG DOCKER_VERSION=28.0.1
+
+FROM golang:${GO_VERSION}-alpine${ALPINE_VERSION} AS builder
+
+WORKDIR /app
+
+# Copy go.mod and go.sum files
+COPY go.mod go.sum ./
+RUN go mod download
+
+# Copy the source code
+COPY . .
+
+# Build the application
+RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /app/bin/edgetainer-agent ./cmd/agent
+
+# Use a minimal alpine image for the final container, but include Docker for the agent
+FROM docker:${DOCKER_VERSION}-alpine${ALPINE_VERSION}
+
+# Install required system dependencies
+RUN apk --no-cache add \
+    ca-certificates \
+    tzdata \
+    docker-compose \
+    bash \
+    curl \
+    openssh-client
+
+WORKDIR /app
+
+# Copy the binary from the builder stage
+COPY --from=builder /app/bin/edgetainer-agent /app/edgetainer-agent
+
+# Create directories
+RUN mkdir -p /app/compose /app/ssh /app/logs
+
+# Create entrypoint script
+RUN echo '#!/bin/sh' > /app/entrypoint.sh && \
+    echo 'if [ ! -f /app/ssh/id_rsa ]; then' >> /app/entrypoint.sh && \
+    echo '  echo "Generating SSH client key..."' >> /app/entrypoint.sh && \
+    echo '  ssh-keygen -t rsa -b 4096 -f /app/ssh/id_rsa -N ""' >> /app/entrypoint.sh && \
+    echo '  echo "SSH client key generated. Public key:"' >> /app/entrypoint.sh && \
+    echo '  cat /app/ssh/id_rsa.pub' >> /app/entrypoint.sh && \
+    echo '  echo ""' >> /app/entrypoint.sh && \
+    echo '  echo "Please register this public key with the server"' >> /app/entrypoint.sh && \
+    echo 'fi' >> /app/entrypoint.sh && \
+    echo 'exec "$@"' >> /app/entrypoint.sh && \
+    chmod +x /app/entrypoint.sh
+
+# Copy default config (this will be overridden in most cases)
+COPY ./config/agent-config.yaml /app/config.yaml
+
+# Create a volume for Docker compose files
+VOLUME /app/compose
+VOLUME /app/ssh
+
+# Set entrypoint and command
+ENTRYPOINT ["/app/entrypoint.sh"] 
+CMD ["/app/edgetainer-agent", "--config", "/app/config.yaml"]

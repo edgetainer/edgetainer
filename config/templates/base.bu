@@ -1,0 +1,76 @@
+variant: flatcar
+version: 1.0.0
+
+storage:
+  files:
+    - path: /etc/ssh/id_rsa
+      mode: 0600
+      contents:
+        inline: "{{.SSHPrivateKey}}"
+    
+    - path: /etc/hostname
+      mode: 0644
+      contents:
+        inline: "{{.DeviceID}}"
+        
+    - path: /opt/edgetainer/scripts/pull-images.sh
+      mode: 0755
+      contents:
+        inline: |
+          #!/bin/bash
+          # Pull latest edgetainer agent image
+          echo "Pulling Edgetainer agent image..."
+          docker pull ghcr.io/edgetainer/edgetainer/agent:latest
+
+          # Create necessary directories
+          mkdir -p /opt/edgetainer/compose
+          mkdir -p /opt/edgetainer/logs
+
+systemd:
+  units:
+    - name: edgetainer-setup.service
+      enabled: true
+      contents: |
+        [Unit]
+        Description=Edgetainer Initial Setup
+        After=docker.service network-online.target
+        Wants=docker.service network-online.target
+        Before=edgetainer-agent.service
+        
+        [Service]
+        Type=oneshot
+        RemainAfterExit=yes
+        ExecStart=/opt/edgetainer/scripts/pull-images.sh
+        
+        [Install]
+        WantedBy=multi-user.target
+        
+    - name: edgetainer-agent.service
+      enabled: true
+      contents: |
+        [Unit]
+        Description=Edgetainer Agent
+        After=network-online.target docker.service edgetainer-setup.service
+        Wants=network-online.target docker.service
+        Requires=edgetainer-setup.service
+        
+        [Service]
+        Restart=always
+        RestartSec=5
+        ExecStartPre=-/usr/bin/docker rm -f edgetainer-agent
+        ExecStart=/usr/bin/docker run --name edgetainer-agent \
+          --privileged \
+          --net=host \
+          -v /etc/ssh/id_rsa:/app/ssh/id_rsa:ro \
+          -v /var/run/docker.sock:/var/run/docker.sock \
+          -v /opt/edgetainer/compose:/app/compose \
+          -v /opt/edgetainer/logs:/app/logs \
+          -e EDGETAINER_DEVICE_ID={{.DeviceID}} \
+          -e EDGETAINER_SERVER_HOST={{.ServerHost}} \
+          -e EDGETAINER_SERVER_PORT={{.ServerPort}} \
+          -e EDGETAINER_SSH_PORT=2222 \
+          --restart unless-stopped \
+          ghcr.io/edgetainer/edgetainer/agent:latest
+        
+        [Install]
+        WantedBy=multi-user.target

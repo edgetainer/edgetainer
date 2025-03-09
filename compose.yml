@@ -1,0 +1,54 @@
+services:
+  edgetainer-server:
+    image: ghcr.io/edgetainer/edgetainer/server:latest
+    container_name: edgetainer-server
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - 8080:8080 # API port
+      - 2222:2222 # SSH tunnel port
+    environment:
+      - TZ=UTC
+      - EDGETAINER_ADMIN_USERNAME=admin
+      - EDGETAINER_ADMIN_PASSWORD=password
+      - EDGETAINER_ADMIN_EMAIL=admin@example.com
+    volumes:
+      - ./config/server-config.yaml:/app/config.yaml
+      - edgetainer-server-ssh:/app/ssh
+      - edgetainer-server-logs:/app/logs
+    restart: unless-stopped
+    networks:
+      - edgetainer-network
+
+  postgres:
+    image: postgres:17
+    container_name: edgetainer-postgres
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=edgetainer
+    ports:
+      - 5432:5432
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U postgres" ]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - edgetainer-network
+
+volumes:
+  postgres-data:
+    driver: local
+  edgetainer-server-ssh:
+    driver: local
+  edgetainer-server-logs:
+    driver: local
+
+networks:
+  edgetainer-network:
+    driver: bridge
