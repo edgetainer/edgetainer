@@ -33,26 +33,45 @@ For more detailed information, see:
 - [Butane Provisioning](docs/butane-provisioning.md)
 - [SSH Authentication Flow](docs/ssh-auth-flow.md)
 
-## Container Images
+## Installation
 
 Edgetainer container images are available on GitHub Container Registry:
 
 - Server: `ghcr.io/edgetainer/edgetainer/server:latest`
 - Agent: `ghcr.io/edgetainer/edgetainer/agent:latest`
 
-### Image Tagging
+### Quick Start
 
-Images are tagged using the following scheme:
+```bash
+# Start the management server
+docker run -d -p 8080:8080 ghcr.io/edgetainer/edgetainer/server:latest
 
-- **Branch builds**: Images are tagged with the branch name (e.g., `ghcr.io/edgetainer/edgetainer/agent:main` or `ghcr.io/edgetainer/edgetainer/agent:feature-xyz`)
-  - Forward slashes in branch names are converted to hyphens (e.g., `feature/new-ui` becomes `feature-new-ui`)
+# Install the agent on edge devices
+docker run -d --restart always ghcr.io/edgetainer/edgetainer/agent:latest
+```
 
-- **Release builds**: Images are tagged with the version number (without the 'v' prefix) and also tagged as `latest` in the following cases:
-  - When a version tag is pushed (e.g., `v1.2.3`) 
-  - When a GitHub Release is published
-  - Example: `ghcr.io/edgetainer/edgetainer/agent:1.2.3`
+For production deployments, refer to our [documentation](docs/).
 
-This allows you to use specific versions or development branches as needed.
+## Development
+
+### Prerequisites
+
+- Go 1.20 or later
+- Docker
+- Node.js 18+ (for web UI)
+
+### Building from Source
+
+```bash
+# Build the server
+make build-server
+
+# Build the agent
+make build-agent 
+
+# Build the web UI
+cd web && npm install && npm run build
+```
 
 ## License
 
